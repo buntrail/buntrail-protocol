@@ -167,3 +167,71 @@ fn fixed_git_inspection_queries_cannot_encode_mutating_flags() {
             .any(|v| v["properties"]["method"]["const"] == "git_read")
     );
 }
+
+#[test]
+fn repository_commands_preserve_byte_names() {
+    let raw = serde_json::json!({"kind":"repository","action":{"CreateBranch":{"name":[255,120],"source_ref":[114,101,102,115,47,104,101,97,100,115,47,120],"start_oid":"a".repeat(40)}}});
+    assert!(
+        serde_json::from_value::<GitCommand>(raw).is_ok(),
+        "Repository command must round-trip byte identities"
+    );
+}
+
+#[test]
+fn repository_outcomes_preserve_legacy_receipts() {
+    let target = c::TargetIdentity {
+        security_binding: vec![1],
+        effective_user: vec![2],
+        filesystem_namespace: vec![3],
+        container: None,
+    };
+    let worktree = c::WorktreeIdentity {
+        target: target.clone(),
+        canonical_path: c::TargetPath::PosixBytes(b"/repo".to_vec()),
+        common_git_directory_identity: vec![4],
+    };
+    let state = c::GitExpectedState {
+        head: c::GitHead::Unborn(b"main".to_vec()),
+        index_fingerprint: [0; 32],
+        worktree_fingerprint: [0; 32],
+    };
+    for outcome in [
+        None,
+        Some(Box::new(c::RepositoryOutcome::RefsUpdated)),
+        Some(Box::new(c::RepositoryOutcome::MergePending {
+            merge: c::GitMergeState {
+                heads: vec!["a".repeat(40)],
+                session: None,
+                message: "retained message".into(),
+                error: Some("hook failed".into()),
+                conflicts: vec![],
+            },
+        })),
+    ] {
+        let legacy = outcome.is_none();
+        let receipt = c::OperationReceipt {
+            id: c::OperationID([5; 16]),
+            state: c::OperationState::Confirmed(c::MutationResult::GitChanged {
+                worktree: worktree.clone(),
+                state: state.clone(),
+                outcome,
+            }),
+        };
+        let wire = Receipt::from_core(&receipt).unwrap();
+        let json = serde_json::to_value(&wire).unwrap();
+        assert_eq!(json.to_string().contains("\"outcome\""), !legacy);
+        assert_eq!(
+            serde_json::from_value::<Receipt>(json)
+                .unwrap()
+                .core(&target)
+                .unwrap(),
+            receipt
+        );
+        let json = serde_json::to_value(&receipt).unwrap();
+        assert_eq!(json.to_string().contains("\"outcome\""), !legacy);
+        assert_eq!(
+            serde_json::from_value::<c::OperationReceipt>(json).unwrap(),
+            receipt
+        );
+    }
+}

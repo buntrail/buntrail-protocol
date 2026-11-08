@@ -179,6 +179,7 @@ impl GitState {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum GitCommand {
+    Repository { action: c::RepositoryAction },
     Stage { paths: Vec<String> },
     Unstage { paths: Vec<String> },
     Commit { message: String },
@@ -190,6 +191,9 @@ pub enum GitCommand {
 impl GitCommand {
     pub fn from_core(c: &c::GitMutation) -> Result<Self, c::CoreError> {
         Ok(match c {
+            c::GitMutation::Repository(action) => Self::Repository {
+                action: action.clone(),
+            },
             c::GitMutation::Stage(p) => Self::Stage {
                 paths: p.iter().map(path).collect::<Result<_, _>>()?,
             },
@@ -218,6 +222,7 @@ impl GitCommand {
     pub fn core(&self) -> Result<c::GitMutation, c::CoreError> {
         let b = |s: &str| B64.decode(s).map_err(|_| invalid());
         Ok(match self {
+            Self::Repository { action } => c::GitMutation::Repository(action.clone()),
             Self::Stage { paths } => c::GitMutation::Stage(
                 paths
                     .iter()
@@ -386,6 +391,20 @@ pub enum OwnerPresence {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Call {
+    Repository {
+        worktree: Worktree,
+    },
+    Commit {
+        worktree: Worktree,
+        oid: String,
+        cursor: Option<u64>,
+    },
+    FilteredHistory {
+        worktree: Worktree,
+        refs: Vec<String>,
+        cursor: Option<String>,
+        filter: c::HistoryFilter,
+    },
     LeaseObserve {
         owner: LeaseOwner,
     },
@@ -477,6 +496,27 @@ pub enum Call {
     Inspect,
 }
 impl Call {
+    pub fn requires_repository(&self) -> bool {
+        matches!(
+            self,
+            Self::Repository { .. }
+                | Self::Commit { .. }
+                | Self::FilteredHistory { .. }
+                | Self::GitMutate {
+                    command: GitCommand::Repository { .. },
+                    ..
+                }
+                | Self::GitExisting {
+                    command: GitCommand::Repository { .. },
+                    ..
+                }
+                | Self::Diff {
+                    source: DiffSource::Commit { .. },
+                    ..
+                }
+        )
+    }
+
     pub fn terminal_lease(&self) -> Option<&str> {
         match self {
             Self::TerminalOpen { lease_id, .. }
@@ -496,13 +536,10 @@ impl Call {
     }
 
     pub fn unprepared_worktree_mutation(&self) -> bool {
-        matches!(
-            self,
-            Self::GitMutate {
-                command: GitCommand::Checkout { .. } | GitCommand::PullFastForward { .. },
-                ..
-            }
-        )
+        match self {
+            Self::GitMutate { command, .. } => command.core().is_ok_and(|v| v.changes_worktree()),
+            _ => false,
+        }
     }
 
     pub fn mutating(&self) -> bool {
@@ -614,6 +651,12 @@ impl Commit {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
+    Repository {
+        snapshot: Box<c::GitRepositorySnapshot>,
+    },
+    Commit {
+        page: c::CommitPage,
+    },
     GitRead {
         stdout_base64: String,
         stderr_base64: String,
@@ -899,6 +942,8 @@ pub enum ResultValue {
     GitChanged {
         worktree: Worktree,
         state: GitState,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        outcome: Option<Box<c::RepositoryOutcome>>,
     },
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -940,7 +985,12 @@ impl Receipt {
                             version: v.as_ref().map(version),
                         }
                     }
-                    c::MutationResult::GitChanged { worktree, state } => ResultValue::GitChanged {
+                    c::MutationResult::GitChanged {
+                        worktree,
+                        state,
+                        outcome,
+                    } => ResultValue::GitChanged {
+                        outcome: outcome.clone(),
                         worktree: Worktree::from_core(worktree)?,
                         state: GitState::from_core(state),
                     },
@@ -1008,12 +1058,15 @@ impl Receipt {
                                 version: version.as_ref().map(|v| v.core(t)).transpose()?,
                             }
                         }
-                        ResultValue::GitChanged { worktree, state } => {
-                            c::MutationResult::GitChanged {
-                                worktree: worktree.core(t)?,
-                                state: state.core()?,
-                            }
-                        }
+                        ResultValue::GitChanged {
+                            worktree,
+                            state,
+                            outcome,
+                        } => c::MutationResult::GitChanged {
+                            outcome: outcome.clone(),
+                            worktree: worktree.core(t)?,
+                            state: state.core()?,
+                        },
                     },
                 ),
                 "failed" => c::OperationState::Failed(c::OperationFailure {

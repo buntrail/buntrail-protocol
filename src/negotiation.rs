@@ -1,6 +1,7 @@
 use crate::{frame::*, types::*};
 pub const INITIAL_CREDIT: usize = 512 * 1024;
 pub const CAPABILITIES: &[&str] = &[
+    "git.repository.v1",
     "container.binding.v1",
     "leases",
     "leases.retirement",
