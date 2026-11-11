@@ -10,6 +10,7 @@ pub const CAPABILITIES: &[&str] = &[
     "file.read",
     "file.resolve",
     "file.remove",
+    "file.trash",
     "file.save",
     "file.save_proof",
     "services",

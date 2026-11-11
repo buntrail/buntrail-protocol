@@ -256,6 +256,10 @@ impl GitCommand {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FileCommand {
+    Trash {
+        confirmed_target: String,
+        confirmed_path: String,
+    },
     CreateDirectory,
     Rename {
         destination: String,
