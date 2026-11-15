@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 — Git sidebar
+
+Negotiate git.sidebar.v1 with bounded scoped-history and commit-summary DTOs, schemas and golden fixtures. Existing wire calls remain available.
+
 ## 0.3.0
 
 File-sidebar operations and compatible shared core contracts. C ABI remains version 1.
