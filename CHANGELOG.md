@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 — Failed-push review
+
+Align first-party dependencies with the corrective 0.4.1 Git sidebar release; no API or behavior changes in this crate.
+
 ## 0.4.0 — Git sidebar
 
 Negotiate git.sidebar.v1 with bounded scoped-history and commit-summary DTOs, schemas and golden fixtures. Existing wire calls remain available.
