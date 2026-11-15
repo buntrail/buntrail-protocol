@@ -393,8 +393,55 @@ pub enum OwnerPresence {
     RuntimeLost {},
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HistoryScope {
+    Head {},
+    All {},
+    References { refs: Vec<String> },
+}
+impl HistoryScope {
+    pub fn from_core(scope: &c::GitHistoryScope) -> Result<Self, c::CoreError> {
+        scope.validate()?;
+        Ok(match scope {
+            c::GitHistoryScope::Head => Self::Head {},
+            c::GitHistoryScope::All => Self::All {},
+            c::GitHistoryScope::References(refs) => Self::References {
+                refs: refs.iter().map(|r| B64.encode(r)).collect(),
+            },
+        })
+    }
+    pub fn core(&self) -> Result<c::GitHistoryScope, c::CoreError> {
+        let scope = match self {
+            Self::Head {} => c::GitHistoryScope::Head,
+            Self::All {} => c::GitHistoryScope::All,
+            Self::References { refs } => {
+                if refs.len() > 512 || refs.iter().any(|r| r.len() > 5464) {
+                    return Err(invalid());
+                }
+                c::GitHistoryScope::References(
+                    refs.iter()
+                        .map(|r| B64.decode(r).map_err(|_| invalid()))
+                        .collect::<Result<_, _>>()?,
+                )
+            }
+        };
+        scope.validate()?;
+        Ok(scope)
+    }
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Call {
+    SidebarHistory {
+        worktree: Worktree,
+        scope: HistoryScope,
+        #[serde(deserialize_with = "crate::types::required_option")]
+        cursor: Option<String>,
+    },
+    CommitSummary {
+        worktree: Worktree,
+        oid: String,
+    },
     Repository {
         worktree: Worktree,
     },
@@ -500,6 +547,13 @@ pub enum Call {
     Inspect,
 }
 impl Call {
+    pub fn requires_sidebar(&self) -> bool {
+        matches!(
+            self,
+            Self::SidebarHistory { .. } | Self::CommitSummary { .. }
+        )
+    }
+
     pub fn requires_repository(&self) -> bool {
         matches!(
             self,
@@ -655,6 +709,9 @@ impl Commit {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
+    CommitSummary {
+        summary: c::GitCommitSummary,
+    },
     Repository {
         snapshot: Box<c::GitRepositorySnapshot>,
     },
