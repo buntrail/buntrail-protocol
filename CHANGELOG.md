@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0
+
+Define verified Welcome directory and workspace operations.
+
 ## 0.4.2 — Lossless Git snapshots
 
 Align first-party dependencies with the lossless Git snapshot correction; no API changes in this crate.
