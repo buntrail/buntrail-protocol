@@ -432,6 +432,15 @@ impl HistoryScope {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "method", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Call {
+    WelcomeContainers {
+        engine: c::ContainerEngine,
+    },
+    WelcomeFolder {
+        parent: File,
+        name: Option<String>,
+        repository: Option<String>,
+    },
+    WelcomeHome {},
     SidebarHistory {
         worktree: Worktree,
         scope: HistoryScope,
@@ -603,7 +612,10 @@ impl Call {
     pub fn mutating(&self) -> bool {
         matches!(
             self,
-            Self::FileMutate { .. } | Self::GitMutate { .. } | Self::TerminalOpen { .. }
+            Self::WelcomeFolder { .. }
+                | Self::FileMutate { .. }
+                | Self::GitMutate { .. }
+                | Self::TerminalOpen { .. }
         )
     }
 }
@@ -709,6 +721,15 @@ impl Commit {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
+    WelcomeContainers {
+        entries: Vec<(String, String)>,
+    },
+    WelcomeFolder {
+        path_base64: String,
+    },
+    WelcomeHome {
+        path_base64: String,
+    },
     CommitSummary {
         summary: c::GitCommitSummary,
     },

@@ -15,6 +15,8 @@ pub const CAPABILITIES: &[&str] = &[
     "file.save",
     "file.save_proof",
     "services",
+    "welcome.home",
+    "welcome.folder",
     "git.read",
     "git.existing",
     "git.worktree_proof",
